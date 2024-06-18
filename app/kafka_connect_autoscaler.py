@@ -58,8 +58,7 @@ class KafkaConnectAutoscaler:
         avg_throughput_per_task = kafka_throughput_mb_sec / current_tasks
 
         # Calculate the desired number of tasks
-        # TODO use upper threshold to build in some headroom...
-        desired_tasks = ceil(kafka_throughput_mb_sec / self.max_throughput_per_task)
+        desired_tasks = ceil(kafka_throughput_mb_sec / (self.max_throughput_per_task * self.upper_threshold))
         if desired_tasks == 0:
             print("Overriding desired_tasks from 0->1")
             desired_tasks = 1
@@ -67,6 +66,7 @@ class KafkaConnectAutoscaler:
         current_tasks_not_desired = current_tasks != desired_tasks
 
         # Check if scaling is needed
+        # TODO don't duplicate the calculation below, decide prior to if statement if scale up or scale down is required
         if current_tasks_not_desired and avg_throughput_per_task > self.upper_threshold * self.max_throughput_per_task:
             # Scale up condition met
             if time.time() - last_scaling_time >= self.cooldown_period:
