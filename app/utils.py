@@ -36,16 +36,32 @@ def convert_utc_to_local(utc_time_str, local_zone):
 
 
 def convert_bytes_to_mb(bytes_value):
-    return bytes_value / (1024 * 1024)
+    return bytes_value / (1000 * 1000)
 
 
 # TODO consider linear weighted average if simple average is "too slow"
+# TODO add logging
 def calculate_average_throughput(data):
     # Initialize a dictionary to keep track of the total MB/sec and count for each topic
     totals = {}
 
-    # Exclude the most recent minute
-    filtered_data = data[:-1]
+    # Check if there are at least 2 data points
+    if len(data) >= 2:
+        # Get the most recent and next most recent data points
+        most_recent = data[-1]
+        next_most_recent = data[-2]
+
+        # Compare the most recent and next most recent data points
+        if most_recent['value'] < next_most_recent['value']:
+            # Exclude the most recent data point if it's less than the next most recent
+            # We want to scale up aggressively, but we don't want to scale down aggressively
+            filtered_data = data[:-1]
+        else:
+            # Include all data points if the most recent is greater than or equal to the next most recent
+            filtered_data = data
+    else:
+        # If there is only 1 data point or less, use all data points
+        filtered_data = data
 
     for entry in filtered_data:
         topic = entry['metric.topic']

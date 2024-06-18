@@ -23,6 +23,7 @@ def build_metrics_api_query_url():
 
 
 def get_received_bytes_metrics():
+    # TODO make topic configurable, and support multiple topics
     kafka_topic = "game_events"
     query_json = {
         "aggregations": [
@@ -47,12 +48,12 @@ def get_received_bytes_metrics():
             ]
 
         },
-        "granularity": "PT1M",
+        "granularity": "PT1M",  # look at 1 minute intervals
         "group_by": [
             "metric.topic"
         ],
         "intervals": [
-            "PT1H/now"
+            "PT15M/now"  # over the last 15 minutes
         ],
         "limit": 25
     }
@@ -68,6 +69,7 @@ def get_received_bytes_metrics():
 def calculate_kafka_throughput_mb_sec():
     # TODO make sure we actually got data
     json_response = get_received_bytes_metrics()
+    # TODO further restrict lookback if query brought in too much data (e.g. only consider 10 minutes instead of 15)
     averages = calculate_average_throughput(json_response['data'])
     print(f"Calculated topic-level average throughput: {averages}")
     total_throughput = sum(averages.values())
