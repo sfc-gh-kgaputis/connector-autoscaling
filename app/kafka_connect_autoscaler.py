@@ -8,11 +8,13 @@ from app.runtime_config import get_snowflake_connector_name
 
 class KafkaConnectAutoscaler:
     def __init__(self):
-        self.max_throughput_per_task = 1  # Maximum throughput per task in MB/sec
+        # Maximum throughput per task in MB/sec
+        # This needs to be calibrated based on compression and testing
+        self.max_throughput_per_task = 8.5
         self.upper_threshold = 0.8  # Upper threshold percentage
         self.lower_threshold = 0.6  # Lower threshold percentage
-        self.cooldown_period = 20  # Cooldown period in seconds
-        self.check_interval = 5  # Interval between autoscaling checks in seconds
+        self.cooldown_period = 300  # Cooldown period in seconds
+        self.check_interval = 30  # Interval between autoscaling checks in seconds
         # TODO store in persistent store (e.g. SSM or dynamo)
         self._last_scaling_time = 0  # Timestamp of the last scaling event
 
@@ -56,10 +58,16 @@ class KafkaConnectAutoscaler:
         avg_throughput_per_task = kafka_throughput_mb_sec / current_tasks
 
         # Calculate the desired number of tasks
+        # TODO use upper threshold to build in some headroom...
         desired_tasks = ceil(kafka_throughput_mb_sec / self.max_throughput_per_task)
+        if desired_tasks == 0:
+            print("Overriding desired_tasks from 0->1")
+            desired_tasks = 1
+
+        current_tasks_not_desired = current_tasks != desired_tasks
 
         # Check if scaling is needed
-        if avg_throughput_per_task > self.upper_threshold * self.max_throughput_per_task:
+        if current_tasks_not_desired and avg_throughput_per_task > self.upper_threshold * self.max_throughput_per_task:
             # Scale up condition met
             if time.time() - last_scaling_time >= self.cooldown_period:
                 # Cooldown period has passed, perform scaling
@@ -68,7 +76,7 @@ class KafkaConnectAutoscaler:
                 self.set_last_scaling_time(time.time())
             else:
                 print("Scaling up skipped due to cooldown period")
-        elif avg_throughput_per_task < self.lower_threshold * self.max_throughput_per_task:
+        elif current_tasks_not_desired and avg_throughput_per_task < self.lower_threshold * self.max_throughput_per_task:
             # Scale down condition met
             if time.time() - last_scaling_time >= self.cooldown_period:
                 # Cooldown period has passed, perform scaling
