@@ -58,6 +58,7 @@ class KafkaConnectAutoscaler:
         avg_throughput_per_task = kafka_throughput_mb_sec / current_tasks
 
         # Calculate the desired number of tasks
+        # TODO consider total partitions to consume - more tasks won't help when exceeded
         desired_tasks = ceil(kafka_throughput_mb_sec / (self.max_throughput_per_task * self.upper_threshold))
         if desired_tasks == 0:
             print("Overriding desired_tasks from 0->1")
