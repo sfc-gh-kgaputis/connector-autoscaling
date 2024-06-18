@@ -1,6 +1,9 @@
 import time
 from math import ceil
-import random
+
+from app.confluent_connector_api_client import get_connector_config, update_connector_config
+from app.confluent_metrics_api_client import calculate_kafka_throughput_mb_sec
+from app.runtime_config import get_snowflake_connector_name
 
 
 class KafkaConnectAutoscaler:
@@ -10,31 +13,24 @@ class KafkaConnectAutoscaler:
         self.lower_threshold = 0.6  # Lower threshold percentage
         self.cooldown_period = 20  # Cooldown period in seconds
         self.check_interval = 5  # Interval between autoscaling checks in seconds
-
         # TODO store in persistent store (e.g. SSM or dynamo)
         self._last_scaling_time = 0  # Timestamp of the last scaling event
-        # TODO remove, replace with live count
-        self._last_task_count = 0
 
-    def get_current_tasks(self):
-        # TODO get tasks from connector API
-        if self._last_task_count == 0:
-            print(f"Simulated start with 1 task")
-            self._last_task_count = 1
-        current_tasks = self._last_task_count
-        return current_tasks
+    # noinspection PyMethodMayBeStatic
+    def get_current_connector_config(self):
+        return get_connector_config(get_snowflake_connector_name())
 
     # noinspection PyMethodMayBeStatic
     def get_kafka_throughput_mb_sec(self):
-        # TODO get throughput from metrics API
-        kafka_throughput_mb_sec = random.uniform(0.5, 200)
-        print(f"Simulated kafka_throughput_mb_sec: {kafka_throughput_mb_sec}")
-        return kafka_throughput_mb_sec
+        return calculate_kafka_throughput_mb_sec()
 
-    def scale_tasks(self, desired_tasks):
-        # TODO update tasks using connector API
-        print(f"Scaling tasks to: {desired_tasks}")
-        self._last_task_count = desired_tasks
+    # noinspection PyMethodMayBeStatic
+    def scale_tasks(self, current_config, desired_tasks):
+        print(f"Scaling tasks to: {desired_tasks}, using current_config: {current_config}")
+        new_config = current_config.copy()
+        new_config['tasks.max'] = str(desired_tasks)
+        # TODO determine if API allows partial update of just tasks.max
+        update_connector_config(get_snowflake_connector_name(), new_config)
 
     def set_last_scaling_time(self, timestamp):
         self._last_scaling_time = timestamp
@@ -44,7 +40,11 @@ class KafkaConnectAutoscaler:
 
     def autoscale(self):
         print("Checking if autoscale is required")
-        current_tasks = self.get_current_tasks()
+
+        # Get current config of Snowflake connector
+        current_config = self.get_current_connector_config()
+        # Parse current task count
+        current_tasks = int(current_config['tasks.max'])
 
         # Get the current Kafka throughput from Confluent Metrics API
         kafka_throughput_mb_sec = self.get_kafka_throughput_mb_sec()
@@ -63,7 +63,7 @@ class KafkaConnectAutoscaler:
             # Scale up condition met
             if time.time() - last_scaling_time >= self.cooldown_period:
                 # Cooldown period has passed, perform scaling
-                self.scale_tasks(desired_tasks)
+                self.scale_tasks(current_config, desired_tasks)
                 # Update the last scaling time
                 self.set_last_scaling_time(time.time())
             else:
@@ -72,7 +72,7 @@ class KafkaConnectAutoscaler:
             # Scale down condition met
             if time.time() - last_scaling_time >= self.cooldown_period:
                 # Cooldown period has passed, perform scaling
-                self.scale_tasks(desired_tasks)
+                self.scale_tasks(current_config, desired_tasks)
                 # Update the last scaling time
                 self.set_last_scaling_time(time.time())
             else:

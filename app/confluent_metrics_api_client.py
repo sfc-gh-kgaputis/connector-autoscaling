@@ -1,19 +1,8 @@
 import requests
 from requests.auth import HTTPBasicAuth
 
-from app.utils import get_environment_variable
-
-
-def get_metrics_api_key():
-    return get_environment_variable("CONFLUENT_METRICS_API_KEY", True)
-
-
-def get_metrics_api_secret():
-    return get_environment_variable("CONFLUENT_METRICS_API_SECRET", True)
-
-
-def get_confluent_cluster_id():
-    return get_environment_variable("CONFLUENT_CLUSTER_ID", True)
+from app.runtime_config import get_metrics_api_key, get_metrics_api_secret, get_confluent_cluster_id
+from app.utils import calculate_average_throughput
 
 
 def build_metrics_api_headers():
@@ -33,33 +22,58 @@ def build_metrics_api_query_url():
     return 'https://api.telemetry.confluent.cloud/v2/metrics/cloud/query'
 
 
-def get_received_bytes():
+def get_received_bytes_metrics():
+    kafka_topic = "game_events"
     query_json = {
         "aggregations": [
             {
-                "metric": "io.confluent.kafka.server/received_bytes"
+                "metric": "io.confluent.kafka.server/received_bytes",
+                "agg": "SUM"
             }
         ],
         "filter": {
-            "field": "resource.kafka.id",
-            "op": "EQ",
-            "value": get_confluent_cluster_id()
+            "op": "AND",
+            "filters": [
+                {
+                    "field": "resource.kafka.id",
+                    "op": "EQ",
+                    "value": get_confluent_cluster_id()
+                },
+                {
+                    "field": "metric.topic",
+                    "op": "EQ",
+                    "value": f"{kafka_topic}"
+                }
+            ]
+
         },
-        "granularity": "PT1H",
+        "granularity": "PT1M",
         "group_by": [
             "metric.topic"
         ],
         "intervals": [
-            "PT1M/now"
+            "PT1H/now"
         ],
         "limit": 25
     }
     print(f"Using query_json: {query_json}")
     response = requests.post(build_metrics_api_query_url(), headers=build_metrics_api_headers(),
                              auth=build_metric_api_auth(), json=query_json)
+    if response.status_code != 200:
+        print(f"Received error response: {response.json()}")
+        raise RuntimeError(f"Unable to get obtain received_bytes_metrics, response status: {response.status_code}")
     return response.json()
 
 
+def calculate_kafka_throughput_mb_sec():
+    # TODO make sure we actually got data
+    json_response = get_received_bytes_metrics()
+    averages = calculate_average_throughput(json_response['data'])
+    print(f"Calculated topic-level average throughput: {averages}")
+    total_throughput = sum(averages.values())
+    print(f"Calculated total throughput: {total_throughput}")
+    return total_throughput
+
+
 if __name__ == "__main__":
-    result = get_received_bytes()
-    print(f"API call for get_received_bytes() returned: {result}")
+    calculate_kafka_throughput_mb_sec()

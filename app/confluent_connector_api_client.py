@@ -1,23 +1,8 @@
 import requests
 from requests.auth import HTTPBasicAuth
 
-from app.utils import get_environment_variable
-
-
-def get_cloud_api_key():
-    return get_environment_variable("CONFLUENT_CLOUD_API_KEY", True)
-
-
-def get_cloud_api_secret():
-    return get_environment_variable("CONFLUENT_CLOUD_API_SECRET", True)
-
-
-def get_confluent_environment_id():
-    return get_environment_variable("CONFLUENT_ENVIRONMENT_ID", True)
-
-
-def get_confluent_cluster_id():
-    return get_environment_variable("CONFLUENT_CLUSTER_ID", True)
+from app.runtime_config import get_cloud_api_key, get_cloud_api_secret, get_confluent_environment_id, \
+    get_confluent_cluster_id, get_snowflake_connector_name
 
 
 def build_connector_api_headers():
@@ -47,12 +32,24 @@ def get_connector_config(connector_name):
     print(f"Getting config for: {connector_name}")
     response = requests.get(build_connector_api_config_url(connector_name), headers=build_connector_api_headers(),
                             auth=build_connector_api_auth())
+    if response.status_code != 200:
+        print(f"Received error response: {response.json()}")
+        raise RuntimeError(f"Unable to get connector config, response status: {response.status_code}")
     return response.json()
+
+
+def update_connector_config(connector_name, new_config):
+    print(f"Updating config for: {connector_name}, new_config: {new_config}")
+    response = requests.put(build_connector_api_config_url(connector_name), headers=build_connector_api_headers(),
+                            auth=build_connector_api_auth(), json=new_config)
+    if response.status_code != 200:
+        print(f"Received error response: {response.json()}")
+        raise RuntimeError(f"Unable to update connector config, response status: {response.status_code}")
 
 
 def main():
     try:
-        result = get_connector_config("snowflake_game_events")
+        result = get_connector_config(get_snowflake_connector_name())
         print(f"API call for get_connector_config() returned: {result}")
     except Exception as e:
         print(f"An error occurred: {e}")
