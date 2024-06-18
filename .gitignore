@@ -35,7 +35,7 @@ connect_plugins/
 /proto/java_client/
 /proto/python_client/
 
-__pycache_
+__pycache__
 
 target/
 

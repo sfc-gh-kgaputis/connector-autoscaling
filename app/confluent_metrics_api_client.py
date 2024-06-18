@@ -9,7 +9,7 @@ def get_metrics_api_key():
 
 
 def get_metrics_api_secret():
-    return get_environment_variable("CONFLUENT_METRICS_API_KEY", True)
+    return get_environment_variable("CONFLUENT_METRICS_API_SECRET", True)
 
 
 def get_confluent_cluster_id():
