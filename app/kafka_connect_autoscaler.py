@@ -4,6 +4,7 @@ from math import ceil
 from app.confluent_connector_api_client import get_connector_config, update_connector_config
 from app.confluent_metrics_api_client import calculate_kafka_throughput_mb_sec
 from app.runtime_config import get_snowflake_connector_name
+from app.utils import parse_topics_string
 
 
 class KafkaConnectAutoscaler:
@@ -23,8 +24,8 @@ class KafkaConnectAutoscaler:
         return get_connector_config(get_snowflake_connector_name())
 
     # noinspection PyMethodMayBeStatic
-    def get_kafka_throughput_mb_sec(self):
-        return calculate_kafka_throughput_mb_sec()
+    def get_kafka_throughput_mb_sec(self, topics):
+        return calculate_kafka_throughput_mb_sec(topics)
 
     # noinspection PyMethodMayBeStatic
     def scale_tasks(self, current_config, desired_tasks):
@@ -48,8 +49,11 @@ class KafkaConnectAutoscaler:
         # Parse current task count
         current_tasks = int(current_config['tasks.max'])
 
+        topics = parse_topics_string(current_config['topics'])
+        print(f"Parsed topics from connector config: {topics}")
+
         # Get the current Kafka throughput from Confluent Metrics API
-        kafka_throughput_mb_sec = self.get_kafka_throughput_mb_sec()
+        kafka_throughput_mb_sec = self.get_kafka_throughput_mb_sec(topics)
 
         # Get last time of a scaling event - used to implement cooldown period
         last_scaling_time = self.get_last_scaling_time()

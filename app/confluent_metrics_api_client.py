@@ -1,8 +1,10 @@
+import sys
+
 import requests
 from requests.auth import HTTPBasicAuth
 
 from app.runtime_config import get_metrics_api_key, get_metrics_api_secret, get_confluent_cluster_id
-from app.utils import calculate_average_throughput
+from app.utils import calculate_average_throughput, parse_topics_string
 
 
 def build_metrics_api_headers():
@@ -22,9 +24,18 @@ def build_metrics_api_query_url():
     return 'https://api.telemetry.confluent.cloud/v2/metrics/cloud/query'
 
 
-def get_received_bytes_metrics():
-    # TODO make topic configurable, and support multiple topics
-    kafka_topic = "game_events"
+def get_received_bytes_metrics(kafka_topics):
+    print(f"Query metrics API for received_bytes for topics: {kafka_topics}")
+    # TODO assert at least 1 topic was provided
+    # First build a list of topic filters
+    topic_filters = []
+    for topic in kafka_topics:
+        topic_filters.append({
+            "field": "metric.topic",
+            "op": "EQ",
+            "value": f"{topic}"
+        })
+    # Now build the actual metrics query
     query_json = {
         "aggregations": [
             {
@@ -41,9 +52,8 @@ def get_received_bytes_metrics():
                     "value": get_confluent_cluster_id()
                 },
                 {
-                    "field": "metric.topic",
-                    "op": "EQ",
-                    "value": f"{kafka_topic}"
+                    "op": "OR",
+                    "filters": topic_filters
                 }
             ]
 
@@ -66,9 +76,10 @@ def get_received_bytes_metrics():
     return response.json()
 
 
-def calculate_kafka_throughput_mb_sec():
+def calculate_kafka_throughput_mb_sec(kafka_topics):
     # TODO make sure we actually got data
-    json_response = get_received_bytes_metrics()
+    json_response = get_received_bytes_metrics(kafka_topics)
+    print(f"Received raw metrics: {json_response}")
     # TODO further restrict lookback if query brought in too much data (e.g. only consider 10 minutes instead of 15)
     averages = calculate_average_throughput(json_response['data'])
     print(f"Calculated topic-level average throughput: {averages}")
@@ -78,4 +89,9 @@ def calculate_kafka_throughput_mb_sec():
 
 
 if __name__ == "__main__":
-    calculate_kafka_throughput_mb_sec()
+    if len(sys.argv) > 1:
+        input_topics = parse_topics_string(sys.argv[1])
+    else:
+        print("Please provide a comma-separated list of topics as an argument.")
+        sys.exit(1)
+    calculate_kafka_throughput_mb_sec(input_topics)
